@@ -1,0 +1,259 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdarg.h>
+#include <string.h>
+#include <unistd.h>
+#include <errno.h>
+#define BF_END_ERROR	'e'
+#define BF_END_IGNORE	'i'
+#define BF_END_WRAP		'w'
+#define BF_OP_VINC		'+'
+#define BF_OP_VDEC		'-'
+#define BF_OP_PINC		'>'
+#define BF_OP_PDEC		'<'
+#define BF_OP_LSTART	'['
+#define BF_OP_LEND		']'
+#define BF_OP_IN		','
+#define BF_OP_OUT		'.'
+#define BF_EOF_ZERO		'0'
+#define BF_EOF_MIN		'a'
+#define BF_EOF_MAX		'b'
+#define BF_EOF_NEGONE	'n'
+#define BF_EOF_NOCHG	'x'
+#define BF_MODE_DUMP	'd'
+#define BF_MODE_RUN		'r'
+typedef struct {
+	long instruction;		/* instruction type */
+	long quantity;			/* number of times to run the instruction */
+	long loop;				/* 'other' instruction index in a loop */
+} instruction;
+void die(const char *s, ...) {
+	va_list a;
+	va_start(a, s);
+	fprintf(stderr, "brief: error: ");
+	vfprintf(stderr, s, a);
+	putchar(10);
+	va_end(a);
+	exit(1);
+}
+int main(int argc, char **argv) {
+	long
+		ce = BF_EOF_ZERO,	/* EOF behaviour */
+		ci = 0,				/* current cell index */
+		cn = 4096,			/* number of cells to allocate */
+		cw = BF_END_WRAP,	/* cell wrap behaviour */
+		ia = 4096,			/* number of allocated instructions */
+		ii = 0,				/* current instruction index */
+		in = 0,				/* number of used instructions */
+		la = 4096,			/* loop stack allocation */
+		ln = 0,				/* loop stack used */
+		mode = BF_MODE_RUN,	/* runtime mode */
+		va = 0,				/* minimum value */
+		vb = 255,			/* maximum value */
+		vw = BF_END_WRAP,	/* value wrap behaviour */
+		j, k				/* counters */
+	;
+	instruction *im = malloc(sizeof(instruction) * ia);	/* instruction memory */
+	long *cm = NULL;		/* cell memory */
+	long *ls = malloc(sizeof(long) * la);				/* loop stack */
+	FILE *fp = NULL;
+	int i;
+	while ((i = getopt(argc, argv, "a:b:c:e:f:hm:v:w:")) != -1) {
+		switch (i) {
+			case 'a': va = atol(optarg); break;
+			case 'b': vb = atol(optarg); break;
+			case 'c': cn = atol(optarg); break;
+			case 'd': mode = BF_MODE_DUMP; break;
+			case 'e': ce = optarg[0]; break;
+			case 'f':
+				fp = fopen(optarg, "r");
+				if (!fp)
+					die("%s: %s", optarg, strerror(errno));
+				break;
+			case 'h':
+				fputs(
+					"brief: a flexible brainfuck interpreter\n"
+					"usage: brief [options]\n\n"
+					"options:\n"
+					"	-a	set minimum cell value (default 0)\n"
+					"	-b	set maximum cell value (default 255)\n"
+					"	-c	set cells to allocate (default 4096)\n"
+					"	-e	value to store upon EOF, which can be one of:\n"
+					"		0	store a zero in the cell\n"
+					"		a	store the minimum cell value in the cell\n"
+					"		b	store the maximum cell value in the cell\n"
+					"		n	store a negative one in the cell\n"
+					"		x	do not change the cell's contents\n"
+					"	-f	source file name (required)\n"
+				, stderr);
+				fputs(
+					"	-h	this help output\n"
+					"	-m	runtime mode, which can be one of:\n"
+					"		d	dump parsed code\n"
+					"		r	run normally\n"
+					"	-v	value over/underflow behaviour\n"
+					"	-w	cell pointer over/underflow behaviour\n\n"
+					"over/underflow behaviours can be one of:\n"
+					"	e	throw an error and quit upon over/underflow\n"
+					"	i	do nothing when attempting to over/underflow\n"
+					"	w	wrap-around to other end upon over/underflow\n\n"
+				, stderr);
+				fputs(
+					"cells are 'long int' values, so do not use -a with a "
+					"value less than -2^31 or -2^63, and do not use -b with a "
+					"value more than 2^31-1 or 2^63-1, depending on your "
+					"architecture's 'long int' size.\n"
+				, stderr);
+				exit(1);
+				break;
+			case 'm': mode = optarg[0]; break;
+			case 'v': vw = optarg[0]; break;
+			case 'w': cw = optarg[0]; break;
+			default: break;
+		}
+	}
+	if (!fp)
+		die("no source file specified; use -f");
+	for (ii = 0; (i = getc(fp)) != EOF; ) {
+		switch (i) {
+			case BF_OP_VINC:
+			case BF_OP_VDEC:
+			case BF_OP_PINC:
+			case BF_OP_PDEC:
+			case BF_OP_IN:
+			case BF_OP_OUT:
+				if (in && i == im[in - 1].instruction)
+					++im[in - 1].quantity;
+				else {
+					if (++in > ia)
+						im = realloc(im, sizeof(instruction) * (ia *= 2));
+					im[in - 1].instruction = i;
+					im[in - 1].quantity = 1;
+					++ii;
+				}
+				break;
+			case BF_OP_LSTART:
+				if (++in > ia)
+					im = realloc(im, sizeof(instruction) * (ia *= 2));
+				im[in - 1].instruction = i;
+				if (++ln > la)
+					ls = realloc(ls, sizeof(long) * (la *= 2));
+				ls[ln - 1] = ii;
+				++ii;
+				break;
+			case BF_OP_LEND:
+				if (++in > ia)
+					im = realloc(im, sizeof(instruction) * (ia *= 2));
+				im[in - 1].instruction = i;
+				im[in - 1].loop = ls[ln - 1];
+				im[ls[ln - 1]].loop = ii;
+				--ln;
+				++ii;
+				break;
+			default: break;
+		}
+	}
+	free(ls);
+	fclose(fp);
+	switch (mode) {
+		case BF_MODE_DUMP:
+			for (ii = 0, j = 0; ii < in; ii++) {
+				printf("%c %ld", (int) im[ii].instruction, im[ii].quantity);
+				if (++j % 8)	putchar(9);
+				else			putchar(10);
+			}
+			putchar(10);
+			break;
+		case BF_MODE_RUN:
+			cm = memset(malloc(cn * sizeof(long)), 0, cn * sizeof(long));
+			for (ii = 0; ii < in; ii++)
+				switch (im[ii].instruction) {
+					case BF_OP_VINC:
+						if (cm[ci] + im[ii].quantity > vb)
+							switch (vw) {
+								case BF_END_ERROR:
+									die("value overflow");
+									break;
+								case BF_END_IGNORE: break;
+								case BF_END_WRAP: cm[ci] = 0; break;
+								default: die("invalid value-end behaviour");
+									break;
+							}
+						else cm[ci] += im[ii].quantity;
+						break;
+					case BF_OP_VDEC:
+						if (cm[ci] - im[ii].quantity < 0)
+							switch (vw) {
+								case BF_END_ERROR:
+									die("value underflow");
+									break;
+								case BF_END_IGNORE: break;
+								case BF_END_WRAP: cm[ci] = vb; break;
+								default: die("invalid value-end behaviour");
+									break;
+							}
+						else cm[ci] -= im[ii].quantity;
+						break;
+					case BF_OP_PINC:
+						if (ci + im[ii].quantity > cn - 1)
+							switch (cw) {
+								case BF_END_ERROR:
+									die("cell index overflow");
+									break;
+								case BF_END_IGNORE: break;
+								case BF_END_WRAP: ci = 0; break;
+								default: die("invalid cell-end behaviour");
+									break;
+							}
+						else ci += im[ii].quantity;
+						break;
+					case BF_OP_PDEC:
+						if (ci - im[ii].quantity < 0)
+							switch (cw) {
+								case BF_END_ERROR:
+									die("cell index underflow");
+									break;
+								case BF_END_IGNORE: break;
+								case BF_END_WRAP: ci = cn - 1; break;
+								default: die("invalid cell-end behaviour");
+									break;
+							}
+						else ci -= im[ii].quantity;
+						break;
+					case BF_OP_IN:
+						for (j = im[ii].quantity; j; j--) {
+							k = getchar();
+							if (k == EOF)
+								switch (ce) {
+									case BF_EOF_ZERO: k = 0; break;
+									case BF_EOF_NEGONE: k = -1; break;
+									case BF_EOF_MIN: k = va; break;
+									case BF_EOF_MAX: k = vb; break;
+									case BF_EOF_NOCHG: break;
+									default: die("invalid EOF behaviour");
+										break;
+								}
+							cm[ci] = k;
+						}
+						break;
+					case BF_OP_OUT:
+						for (j = im[ii].quantity; j; j--)
+							putchar(cm[ci]);
+						break;
+					case BF_OP_LSTART:
+						if (!cm[ci])
+							ii = im[ii].loop;
+						break;
+					case BF_OP_LEND:
+						if (cm[ci])
+							ii = im[ii].loop;
+						break;
+					default: break;
+				}
+			free(cm);
+			break;
+		default: die("invalid mode"); break;
+	}
+	free(im);
+	return 0;
+}
