@@ -36,7 +36,43 @@ void die(const char *s, ...) {
 	va_end(a);
 	exit(1);
 }
+void help() {
+	fputs(
+"brief: a flexible brainfuck interpreter\n"
+"Usage: brief [options]\n\n"
+"Options:\n"
+"	-a	minimum cell value (default: 0)\n"
+"	-b	maximum cell value (default: 255)\n"
+"	-c	number of cells to allocate (default: 4096)\n"
+"	-e	value to store upon EOF, which can be one of:\n"
+"		0	store a zero in the cell (default)\n"
+"		a	store the minimum cell value in the cell\n"
+"		b	store the maximum cell value in the cell\n"
+"		n	store a negative one in the cell\n"
+"		x	do not change the cell's contents\n"
+"	-f	source file name (required)\n"
+	, stderr);
+	fputs(
+"	-h	this help output\n"
+"	-m	runtime mode, which can be one of:\n"
+"		d	dump parsed code\n"
+"		r	run normally (default)\n"
+"	-v	value overflow/underflow behaviour\n"
+"	-w	cell pointer overflow/underflow behaviour\n\n"
+"Overflow/underflow behaviours can be one of:\n"
+"	e	throw an error and quit upon over/underflow\n"
+"	i	do nothing when attempting to over/underflow\n"
+"	w	wrap-around to other end upon over/underflow (default)\n\n"
+	, stderr);
+	fputs(
+"Cells are 'long int' values, so do not use -a with a value lower than your\n"
+"platform's lowest acceptable value for 'long int', and likewise, do not use\n"
+"-b with a value higher than LONG_MAX.\n"
+	, stderr);
+	exit(1);
+}
 int main(int argc, char **argv) {
+	/* initial variable setup */
 	long
 		ce = BF_EOF_ZERO,	/* EOF behaviour */
 		ci = 0,				/* current cell index */
@@ -51,14 +87,17 @@ int main(int argc, char **argv) {
 		va = 0,				/* minimum value */
 		vb = 255,			/* maximum value */
 		vw = BF_END_WRAP,	/* value wrap behaviour */
-		j, k				/* counters */
+		j = 0, k			/* counters */
 	;
-	instruction *im = malloc(sizeof(instruction) * ia);	/* instruction memory */
-	long *cm = NULL;		/* cell memory */
-	long *ls = malloc(sizeof(long) * la);				/* loop stack */
+	instruction *im = malloc(sizeof(instruction) * ia); /* inst. memory */
+	long *cm = NULL; /* cell memory */
+	long *ls = malloc(sizeof(long) * la); /* loop stack */
 	FILE *fp = NULL;
 	int i;
+	
+	/* option parsing */
 	while ((i = getopt(argc, argv, "a:b:c:e:f:hm:v:w:")) != -1) {
+		j++;
 		switch (i) {
 			case 'a': va = atol(optarg); break;
 			case 'b': vb = atol(optarg); break;
@@ -70,50 +109,19 @@ int main(int argc, char **argv) {
 				if (!fp)
 					die("%s: %s", optarg, strerror(errno));
 				break;
-			case 'h':
-				fputs(
-					"brief: a flexible brainfuck interpreter\n"
-					"usage: brief [options]\n\n"
-					"options:\n"
-					"	-a	set minimum cell value (default 0)\n"
-					"	-b	set maximum cell value (default 255)\n"
-					"	-c	set cells to allocate (default 4096)\n"
-					"	-e	value to store upon EOF, which can be one of:\n"
-					"		0	store a zero in the cell\n"
-					"		a	store the minimum cell value in the cell\n"
-					"		b	store the maximum cell value in the cell\n"
-					"		n	store a negative one in the cell\n"
-					"		x	do not change the cell's contents\n"
-					"	-f	source file name (required)\n"
-				, stderr);
-				fputs(
-					"	-h	this help output\n"
-					"	-m	runtime mode, which can be one of:\n"
-					"		d	dump parsed code\n"
-					"		r	run normally\n"
-					"	-v	value over/underflow behaviour\n"
-					"	-w	cell pointer over/underflow behaviour\n\n"
-					"over/underflow behaviours can be one of:\n"
-					"	e	throw an error and quit upon over/underflow\n"
-					"	i	do nothing when attempting to over/underflow\n"
-					"	w	wrap-around to other end upon over/underflow\n\n"
-				, stderr);
-				fputs(
-					"cells are 'long int' values, so do not use -a with a "
-					"value less than -2^31 or -2^63, and do not use -b with a "
-					"value more than 2^31-1 or 2^63-1, depending on your "
-					"architecture's 'long int' size.\n"
-				, stderr);
-				exit(1);
-				break;
+			case 'h': help(); break;
 			case 'm': mode = optarg[0]; break;
 			case 'v': vw = optarg[0]; break;
 			case 'w': cw = optarg[0]; break;
 			default: break;
 		}
 	}
+	if (!j)
+		help();
 	if (!fp)
 		die("no source file specified; use -f");
+	
+	/* parsing stage */
 	for (ii = 0; (i = getc(fp)) != EOF; ) {
 		switch (i) {
 			case BF_OP_VINC:
@@ -155,6 +163,8 @@ int main(int argc, char **argv) {
 	}
 	free(ls);
 	fclose(fp);
+	
+	/* running stage */
 	switch (mode) {
 		case BF_MODE_DUMP:
 			for (ii = 0, j = 0; ii < in; ii++) {
