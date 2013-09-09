@@ -47,7 +47,7 @@ void help() {
 "Options:\n"
 "	-a	minimum cell value (default: 0)\n"
 "	-b	maximum cell value (default: 255)\n"
-"	-c	number of cells to allocate (default: 4096)\n"
+"	-c	number of cells to allocate (default: 30000)\n"
 "	-e	value to store upon EOF, which can be one of:\n"
 "		0	store a zero in the cell (default)\n"
 "		a	store the minimum cell value in the cell\n"
@@ -64,10 +64,10 @@ void help() {
 "	-v	value overflow/underflow behaviour\n"
 "	-w	cell pointer overflow/underflow behaviour\n\n"
 "Overflow/underflow behaviours can be one of:\n"
-"	e	throw an error and quit upon over/underflow\n"
+"	e	throw an error and quit upon over/underflow (pointer default)\n"
 "	i	do nothing when attempting to over/underflow\n"
-"	w	wrap-around to other end upon over/underflow (default)\n\n"
-	, stderr);
+"	w	wrap-around to other end upon over/underflow (value default)\n"
+	"\n", stderr);
 	fputs(
 "Cells are 'long int' values, so do not use -a with a value lower than your\n"
 "platform's lowest acceptable value for 'long int', and likewise, do not use\n"
@@ -80,8 +80,8 @@ int main(int argc, char **argv) {
 	long
 		ce = BF_EOF_ZERO,   /* EOF behaviour */
 		ci = 0,             /* current cell index */
-		cn = 4096,          /* number of cells to allocate */
-		cw = BF_END_WRAP,   /* cell wrap behaviour */
+		cn = 30000,         /* number of cells to allocate */
+		cw = BF_END_ERROR,  /* cell wrap behaviour */
 		ia = 4096,          /* number of allocated instructions */
 		ii = 0,             /* current instruction index */
 		in = 0,             /* number of used instructions */
