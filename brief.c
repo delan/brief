@@ -76,6 +76,10 @@ void help() {
 	exit(1);
 }
 
+long wrap(long value, long low, long high) {
+	return (value - low) % (1 + high - low) + low;
+}
+
 int main(int argc, char **argv) {
 	long
 		ce = BF_EOF_ZERO,   /* EOF behaviour */
@@ -184,21 +188,31 @@ int main(int argc, char **argv) {
 					case BF_END_ERROR:
 						die("value overflow");
 						break;
-					case BF_END_IGNORE: break;
-					case BF_END_WRAP: cm[ci] = 0; break;
+					case BF_END_IGNORE:
+						cm[ci] = vb;
+						break;
+					case BF_END_WRAP:
+						cm[ci] += im[ii].quantity;
+						cm[ci] = wrap(cm[ci], va, vb);
+						break;
 					default:
 					die("invalid value-end behaviour");
 					}
 				else cm[ci] += im[ii].quantity;
 				break;
 			case BF_OP_VDEC:
-				if (cm[ci] - im[ii].quantity < 0)
+				if (cm[ci] - im[ii].quantity < va)
 					switch (vw) {
 					case BF_END_ERROR:
 						die("value underflow");
 						break;
-					case BF_END_IGNORE: break;
-					case BF_END_WRAP: cm[ci] = vb; break;
+					case BF_END_IGNORE:
+						cm[ci] = va;
+						break;
+					case BF_END_WRAP:
+						cm[ci] -= im[ii].quantity;
+						cm[ci] = wrap(cm[ci], va, vb);
+						break;
 					default:
 					die("invalid value-end behaviour");
 					}
@@ -210,8 +224,13 @@ int main(int argc, char **argv) {
 					case BF_END_ERROR:
 						die("cell index overflow");
 						break;
-					case BF_END_IGNORE: break;
-					case BF_END_WRAP: ci = 0; break;
+					case BF_END_IGNORE:
+						ci = cn - 1;
+						break;
+					case BF_END_WRAP:
+						ci += im[ii].quantity;
+						ci = wrap(ci, 0, cn);
+						break;
 					default:
 					die("invalid cell-end behaviour");
 					}
@@ -223,8 +242,13 @@ int main(int argc, char **argv) {
 					case BF_END_ERROR:
 						die("cell index underflow");
 						break;
-					case BF_END_IGNORE: break;
-					case BF_END_WRAP: ci = cn - 1; break;
+					case BF_END_IGNORE:
+						ci = 0;
+						break;
+					case BF_END_WRAP:
+						ci -= im[ii].quantity;
+						ci = wrap(ci, 0, cn);
+						break;
 					default:
 					die("invalid cell-end behaviour");
 					}
