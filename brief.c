@@ -77,7 +77,13 @@ void help() {
 }
 
 long wrap(long value, long low, long high) {
-	return (value - low) % (1 + high - low) + low;
+	long delta = 1 + high - low;
+	value -= low;
+	value %= delta;
+	value += delta;
+	value %= delta;
+	value += low;
+	return value;
 }
 
 int main(int argc, char **argv) {
